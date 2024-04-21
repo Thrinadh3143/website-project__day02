@@ -1,0 +1,347 @@
+---
+title: "STA 631 Statistical Modelling And Regression Portfolio"
+site: distill::distill_website
+---
+
+```{r setup }
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+### Loading the libraries 
+```{r}
+# load the libraries
+library(tidyverse)
+library(dplyr)
+library(corrplot)
+library(caret)
+library(Metrics)
+library(rsq)
+```
+
+### Load the Dataset
+```{r }
+# load the dataset
+hotel_data <- read_csv("hotel_bookings.csv")
+```
+### Summary of the dataset 
+```{r}
+# overview of the dataset 
+
+glimpse(hotel_data)
+
+```
+#### Removing missing values columns from the dataset 
+```{r}
+null_counts <- colSums(is.na(hotel_data))
+null_counts
+```
+
+
+Here we can see the in children column 4 observations are missing, so we will remove the null value rows to cleanup the dataset
+
+```{r}
+hotel_clean_data <- na.omit(hotel_data)
+
+skimr::skim(hotel_clean_data)
+
+```
+### Data Visualization 
+
+#### 1) What is the range of years covered by the dataset, including both the earliest and latest years?
+
+```{r}
+# let's find the years the data taken from 
+years_of_data <- unique(hotel_clean_data$arrival_date_year)
+print(years_of_data)
+
+```
+
+Ans) The data is taken from 2015, 2016, 2017 approximately more than 1 lakh columns are recorded 
+
+
+#### 2) What is the total number of bookings canceled and the total number of bookings not canceled? 
+```{r}
+# group by the  booking canceleation status 
+grp_by_canceled_hotel <- hotel_clean_data %>%
+  group_by(is_canceled) %>%
+  summarise(count = n())
+
+grp_by_canceled_hotel
+
+```
+
+Ans) From the above table we can see that there are 75166  hotel bookings are not canceled  and 44220 hotel bookings are canceled
+
+#### 3) what percentage of bookings are canceled in the total bookings?
+
+```{r}
+# Calculate the total number of bookings
+total_bookings <- sum(grp_by_canceled_hotel$count)
+
+# Calculate the number of canceled bookings
+canceled_bookings <- grp_by_canceled_hotel$count[grp_by_canceled_hotel$is_canceled == 1]
+
+# Calculate the percentage of bookings that are canceled overall
+percentage_canceled <- (sum(canceled_bookings) / total_bookings) * 100
+
+# Print the result
+cat("The percentage of bookings that are canceled overall is:", percentage_canceled, "%\n")
+
+```
+#### 4) Distribution of Canceled and Not Canceled Bookings
+```{r}
+
+# Calculate the total number of bookings
+total_bookings <- sum(grp_by_canceled_hotel$count)
+
+# Calculate the percentage of each status type
+percentage <- round((grp_by_canceled_hotel$count / total_bookings) * 100, 2)
+
+# Create labels with both status type and percentage
+labels <- paste(c( "Not Canceled","Canceled"), "(", percentage, "%)", sep = " ")
+
+# Define colors for each slice
+colors <- c("green", "red")  # You can customize the colors as needed
+
+# Plot the pie chart with labels and colors
+pie(grp_by_canceled_hotel$count, labels = labels, col = colors,
+    main = "Distribution of Canceled and Not Canceled Bookings")
+
+
+```
+
+#### 5) Total Number of Bookings Canceled vs. Not Canceled
+
+```{r}
+# Create a ggplot object
+ggplot(hotel_clean_data, aes(x = factor(is_canceled), fill = factor(is_canceled))) +
+  geom_bar() +
+  labs(title = "Total Number of Bookings Canceled vs. Not Canceled",
+       x = "Cancellation Status",
+       y = "Total Number of Bookings") +
+  scale_x_discrete(labels = c("Not Canceled", "Canceled"))
+
+```
+
+#### 6) What are the combined totals of bookings that were canceled and not canceled, categorized by hotel type?
+
+```{r}
+# group by the hotel type and cancelation status  
+grp_by_hotel_type <- hotel_clean_data %>%
+  group_by(hotel,is_canceled) %>%
+  summarise(count = n())
+
+grp_by_hotel_type
+```
+
+#### 7) Total Number of Bookings by Cancellation Status and Hotel Type
+
+```{r}
+# Create a ggplot object
+ggplot(hotel_clean_data, aes(x = factor(is_canceled), fill = factor(hotel))) +
+  geom_bar(position = "dodge") +
+  labs(title = "Total Number of Bookings by Cancellation Status and Hotel Type",
+       x = "Cancellation Status",
+       y = "Total Number of Bookings") +
+  scale_x_discrete(labels = c("Not Canceled", "Canceled"))
+
+
+```
+
+#### 8) What are the combined totals of bookings that were canceled and not canceled, categorized by year ?
+
+```{r}
+# group by the year and cancelation status 
+grp_by_year <- hotel_clean_data %>%
+  group_by(arrival_date_year,is_canceled) %>%
+  summarise(count = n())
+
+grp_by_year
+```
+#### 9) Total Number of Bookings by Cancellation Status over Years
+```{r}
+# Filter for canceled and not canceled bookings separately
+canceled_bookings <- grp_by_year %>% filter(is_canceled == 1)
+not_canceled_bookings <- grp_by_year %>% filter(is_canceled == 0)
+
+# Create line plot
+ggplot() +
+  geom_line(data = canceled_bookings, aes(x = arrival_date_year, y = count, color = "Canceled"), size = 1) +
+  geom_line(data = not_canceled_bookings, aes(x = arrival_date_year, y = count, color = "Not Canceled"), size = 1) +
+  labs(
+    title = "Total Number of Bookings by Cancellation Status over Years",
+    x = "Year",
+    y = "Total Number of Bookings") +
+  scale_color_manual(values = c("red", "blue"), name = "Cancellation Status",
+                     labels = c("Canceled", "Not Canceled")) +
+  theme_minimal()
+
+```
+
+From the above graph we can see that from 2015 to 2016 cancelations and not cancelations are increased and from 2016 to 2017 cancelation and not cancelations are decreased.
+
+#### 10) What percentage of bookings canceled in each month ?
+```{r}
+# Group data by 'arrival_date_month' and 'is_canceled', then calculate the total number of bookings
+total_bookings <- hotel_clean_data %>%
+  group_by(arrival_date_month) %>%
+  summarise(total = n())
+
+# Group data by 'arrival_date_month' and 'is_canceled', then calculate the number of canceled bookings
+canceled_bookings <- hotel_clean_data %>%
+  filter(is_canceled == 1) %>%
+  group_by(arrival_date_month) %>%
+  summarise(canceled_total = n())
+
+# Merge total and canceled bookings dataframes
+merged_data <- merge(total_bookings, canceled_bookings, by = "arrival_date_month", all.x = TRUE)
+
+# Calculate the percentage of canceled bookings
+merged_data$percentage_canceled <- (merged_data$canceled_total / merged_data$total) * 100
+
+# Print the resulting dataframe
+print(merged_data)
+```
+#### 11) Percentage of Bookings Canceled over Month 
+```{r}
+
+# Convert 'arrival_date_month' to factor with correct order
+merged_data$arrival_date_month <- factor(merged_data$arrival_date_month, 
+                                         levels = c("January", "February", "March", "April",  "May","June", "July", "August", "September", "October", "November", "December"))
+
+# Create a ggplot object
+ggplot(merged_data, aes(x = arrival_date_month, y = percentage_canceled, group = 1)) +
+  geom_line(color = "blue") +
+  geom_point(color = "blue", size = 3) +
+  labs(
+    title = "Percentage of Bookings Canceled over Month ",
+    x = "Month",
+    y = "Percentage Canceled") +
+  scale_y_continuous(labels = scales::percent_format(scale = 1, accuracy = 1)) +
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1))
+
+
+
+```
+
+
+#### 12) What are the types of rooms that were booked by customers and subsequently canceled? 
+
+```{r}
+grp_by_roomtype <- hotel_clean_data %>%
+  group_by(reserved_room_type,is_canceled) %>%
+  summarise(count = n())
+
+grp_by_roomtype
+```
+
+#### 13) Number of Bookings by Reserved Room Type and Cancellation Status
+```{r}
+ggplot(grp_by_roomtype, aes(x = reserved_room_type, y = count, fill = factor(is_canceled))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Number of Bookings by Reserved Room Type and Cancellation Status",
+       x = "Reserved Room Type",
+       y = "Number of Bookings",
+       fill = "Cancellation Status") +
+  scale_fill_manual(values = c("Not Canceled" = "skyblue", "Canceled" = "salmon")) +
+  facet_grid(. ~ factor(is_canceled)) +  
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+#### Dropping Unwanted columns
+```{r}
+df <- hotel_clean_data %>%
+  select(
+    -arrival_date_year,
+    -arrival_date_month,
+    -children,
+    -babies,
+    -meal,
+    -country,
+    -market_segment,
+    -distribution_channel,
+    -agent,
+    -company,
+    -reservation_status,
+    -required_car_parking_spaces,
+    -reservation_status_date,
+    -assigned_room_type
+  )
+```
+
+### Correlation Matrix
+```{r}
+# Filter numeric columns
+df_numeric <- df[, sapply(df, is.numeric)]
+
+# Compute correlation matrix
+correlation_matrix <- cor(df_numeric, use = "pairwise.complete.obs")
+
+print(correlation_matrix)
+
+
+```
+
+### HeatMap 
+```{r}
+# Plot heatmap
+corrplot(correlation_matrix, method = "color", type = "upper", 
+         tl.col = "black", tl.srt = 45, tl.cex = 0.7, addCoef.col = "black", 
+         number.cex = 0.7, col = colorRampPalette(c("white", "red"))(100),
+         title = "Correlation Heatmap")
+```
+
+
+
+### Logistic Regression Model 
+
+```{r}
+
+# Convert 'is_canceled' to a factor
+df$is_canceled <- as.factor(df$is_canceled)
+
+# Set seed for reproducibility
+set.seed(100)
+
+# Create data partition
+test_index <- createDataPartition(y = df$is_canceled, times = 1, p = 0.3, list = FALSE)
+
+# Create training dataset
+df_train <- df[-test_index,]
+
+# Create validation dataset
+df_validation <- df[test_index,]
+
+# Check dimensions of training dataset
+dim(df_train)
+```
+
+```{r}
+
+# Train logistic regression model
+lr_model <- glm(is_canceled ~ ., data = df_train, family = binomial)
+
+summary (lr_model)
+
+```
+
+```{r}
+# Make predictions on the validation dataset
+lr_pred <- predict(lr_model, newdata = df_validation, type = "response")
+
+# Convert predicted probabilities to binary predictions
+lr_pred <- ifelse(lr_pred > 0.5, 1, 0)
+
+table(df_validation$is_canceled==lr_pred)
+
+# Print accuracy
+accuracy <- sum(lr_pred == df_validation$is_canceled) / nrow(df_validation)
+print(paste("Accuracy:\n", accuracy))
+
+```
+
+Performance Accuracy of the Logistic Model is 78 %
+
+
