@@ -1,0 +1,12 @@
+name: "Thrinadh's Portfolio"
+title: "Hotel Booking Cancelation"
+description: |
+  Hotel Booking Cancelation Prediction
+output_dir: "docs"
+navbar:
+  right:
+    - text: "Home"
+      href: Portfolio.html
+    - text: "About"
+      href: about.html
+output: distill::distill_article
